@@ -88,9 +88,10 @@ export function findTermPosition (lunr, term, text) {
   // const len = str.length
 
   // experiment with avoiding regex
-  const index = str.indexOf(term);
+  const index = str.indexOf(term)
+  const len = str.substr(index).match(/^[^.,\s]*/)[0].length
 
-  if(index === -1) {
+  if (index === -1) {
     // Not found
     return {
       start: 0,
@@ -99,7 +100,7 @@ export function findTermPosition (lunr, term, text) {
   } else {
     return {
       start: index,
-      length: term.length
+      length: len,
     }
   }
 

@@ -224,7 +224,7 @@ describe('findTermPosition()', () => {
     // More specifically we do not run the trimmer which removes non word-characters from the beginning and end of tokens.
     expect(result).to.deep.eq({
       start: 91,
-      length: 9,
+      length: 8,
     })
   })
   it('should found first match "search"', () => {
