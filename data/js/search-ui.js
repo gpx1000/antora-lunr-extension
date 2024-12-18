@@ -146,6 +146,7 @@
   searchResultContainer.classList.add('search-result-dropdown-menu');
   searchInput.parentNode.appendChild(searchResultContainer);
   const facetFilterInput = document.querySelector('#search-field input[type=checkbox][data-facet-filter]');
+  const lunr = require('lunr');
 
   function appendStylesheet (href) {
     if (!href) return
@@ -395,7 +396,54 @@
     if (text.trim() === '') {
       return
     }
-    const result = search(index, store.documents, text);
+    const maxLevenshteinDistance = 2;
+    const lunrBoost = 1;
+    const trie = store.trie;
+    const trieResults = trie.searchWithLevenshteinWithData(text.toLowerCase(), maxLevenshteinDistance);
+    // Extract unique document IDs from Trie results
+    const trieDocIds = new Set();
+    trieResults.forEach((r) => r.data.forEach((d) => trieDocIds.add(d.id)));
+
+    let lunrResults = [];
+    if (trieDocIds.size > 0) {
+      // Filter documents for Lunr search
+      const filteredDocuments = store.documents.filter((doc) => trieDocIds.has(doc.id));
+      if (filteredDocuments.length > 0) {
+        // Rebuild a temporary index only with the filtered documents
+        const tempLunrIndex = lunr(function () {
+          this.ref('id');
+          this.field('title', { boost: 10 });
+          this.field('name');
+          this.field('text');
+          this.field('component');
+          this.field('keyword', { boost: 5 });
+          filteredDocuments.forEach((doc) => this.add(doc));
+        });
+        lunrResults = search(tempLunrIndex, filteredDocuments, text);
+      }
+    }
+    const combinedResults = new Map();
+
+    trieResults.forEach((result) => {
+      result.data.forEach((doc) => {
+        combinedResults.set(doc.id, {
+          ...doc,
+          score: (combinedResults.get(doc.id)?.score || 0) + 10,
+        });
+      });
+    });
+
+    lunrResults.forEach((result) => {
+      const doc = store.documents.find((d) => d.id === parseInt(result.ref, 10));
+      if (doc) {
+        combinedResults.set(doc.id, {
+          ...doc,
+          score: (combinedResults.get(doc.id)?.score || 0) + result.score * lunrBoost,
+        });
+      }
+    });
+
+    const result = Array.from(combinedResults.values()).sort((a, b) => b.score - a.score);
     const searchResultDataset = document.createElement('div');
     searchResultDataset.classList.add('search-result-dataset');
     searchResultContainer.appendChild(searchResultDataset);
