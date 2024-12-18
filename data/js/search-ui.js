@@ -146,7 +146,6 @@
   searchResultContainer.classList.add('search-result-dropdown-menu');
   searchInput.parentNode.appendChild(searchResultContainer);
   const facetFilterInput = document.querySelector('#search-field input[type=checkbox][data-facet-filter]');
-  const lunr = require('lunr');
 
   function appendStylesheet (href) {
     if (!href) return
@@ -410,7 +409,7 @@
       const filteredDocuments = store.documents.filter((doc) => trieDocIds.has(doc.id));
       if (filteredDocuments.length > 0) {
         // Rebuild a temporary index only with the filtered documents
-        const tempLunrIndex = lunr(function () {
+        const tempLunrIndex = globalThis.lunr(function () {
           this.ref('id');
           this.field('title', { boost: 10 });
           this.field('name');
