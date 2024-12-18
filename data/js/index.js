@@ -1,7 +1,7 @@
 /* global CustomEvent, globalThis */
 'use strict'
 
-import { buildHighlightedText, findTermPosition, searchWithTrie } from './search-result-highlighting.mjs'
+import { buildHighlightedText, findTermPosition } from './search-result-highlighting.mjs'
 
 const config = document.getElementById('search-ui-script').dataset
 const snippetLength = parseInt(config.snippetLength || 100, 10)
@@ -263,9 +263,11 @@ function searchIndex (index, store, text) {
   }
   const maxLevenshteinDistance = 2
   const lunrBoost = 1
-  const trieResults = searchWithTrie(store.trie, text.toLowerCase(), maxLevenshteinDistance)
+  const trieResults = globalThis
+    .LevenshteinTrie(store.trie)
+    .searchWithLevenshteinWithData(text.toLowerCase(), maxLevenshteinDistance)
   let result
-  if (trieResults.length === 0) {
+  if (!trieResults) {
     result = search(index, store.documents, text)
   } else {
     // Extract unique document IDs from Trie results
