@@ -103,30 +103,7 @@ export function findTermPosition (lunr, term, text) {
       length: len,
     }
   }
-
-  // for (let sliceEnd = 0, sliceStart = 0; sliceEnd <= len; sliceEnd++) {
-  //   const char = str.charAt(sliceEnd)
-  //   const sliceLength = sliceEnd - sliceStart
-  //
-  //   if ((char.match(lunr.tokenizer.separator) || sliceEnd === len)) {
-  //     if (sliceLength > 0) {
-  //       const value = str.slice(sliceStart, sliceEnd)
-  //       // QUESTION: if we get an exact match without running the pipeline should we stop?
-  //       if (value.includes(term)) {
-  //         // returns the first match
-  //         return {
-  //           start: sliceStart,
-  //           length: value.length,
-  //         }
-  //       }
-  //     }
-  //     sliceStart = sliceEnd + 1
-  //   }
-  // }
-
-  // not found!
-  // return {
-  //   start: 0,
-  //   length: 0,
-  // }
+}
+export function searchWithTrie (trie, term, maxDistance) {
+  trie.searchWithLevenshteinWithData(term.toLowerCase(), maxDistance)
 }

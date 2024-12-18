@@ -107,32 +107,9 @@
         length: len,
       }
     }
-
-    // for (let sliceEnd = 0, sliceStart = 0; sliceEnd <= len; sliceEnd++) {
-    //   const char = str.charAt(sliceEnd)
-    //   const sliceLength = sliceEnd - sliceStart
-    //
-    //   if ((char.match(lunr.tokenizer.separator) || sliceEnd === len)) {
-    //     if (sliceLength > 0) {
-    //       const value = str.slice(sliceStart, sliceEnd)
-    //       // QUESTION: if we get an exact match without running the pipeline should we stop?
-    //       if (value.includes(term)) {
-    //         // returns the first match
-    //         return {
-    //           start: sliceStart,
-    //           length: value.length,
-    //         }
-    //       }
-    //     }
-    //     sliceStart = sliceEnd + 1
-    //   }
-    // }
-
-    // not found!
-    // return {
-    //   start: 0,
-    //   length: 0,
-    // }
+  }
+  function searchWithTrie (trie, term, maxDistance) {
+    trie.searchWithLevenshteinWithData(term.toLowerCase(), maxDistance);
   }
 
   /* global CustomEvent, globalThis */
@@ -397,8 +374,7 @@
     }
     const maxLevenshteinDistance = 2;
     const lunrBoost = 1;
-    const trie = store.trie;
-    const trieResults = trie.searchWithLevenshteinWithData(text.toLowerCase(), maxLevenshteinDistance);
+    const trieResults = searchWithTrie(store.trie, text.toLowerCase(), maxLevenshteinDistance);
     // Extract unique document IDs from Trie results
     const trieDocIds = new Set();
     trieResults.forEach((r) => r.data.forEach((d) => trieDocIds.add(d.id)));
