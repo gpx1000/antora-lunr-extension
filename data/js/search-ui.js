@@ -693,7 +693,7 @@
     trieData = base64ToBytesArr(trieData);
     const trieDataJSON = window.pako.inflate(trieData, { to: 'string' });
     const index = { index: lunr.Index.load(lunrdata.index), store: lunrdata.store, trie: new LevenshteinTrieUser() };
-    index.trie.load(trieDataJSON);
+    index.trie.load(JSON.parse(trieDataJSON));
     enableSearchInput(true);
     searchInput.dispatchEvent(
       new CustomEvent('loadedindex', {
