@@ -571,7 +571,6 @@
       return
     }
     const maxLevenshteinDistance = 3;
-    const lunrBoost = 1;
     const trieResults = trie
       .searchWithLevenshteinWithData(text.toLowerCase(), maxLevenshteinDistance);
     let result;
@@ -603,28 +602,7 @@
           lunrResults = search(tempLunrIndex, filteredDocuments, text);
         }
       }
-      const combinedResults = new Map();
-
-      trieResults.forEach((result) => {
-        result.data.forEach((doc) => {
-          combinedResults.set(doc.id, {
-            ...doc,
-            score: (combinedResults.get(doc.id)?.score || 0) + 10,
-          });
-        });
-      });
-
-      lunrResults.forEach((result) => {
-        const doc = store.documents[result.ref];
-        if (doc) {
-          combinedResults.set(doc.id, {
-            ...doc,
-            score: (combinedResults.get(doc.id)?.score || 0) + result.score * lunrBoost,
-          });
-        }
-      });
-
-      result = Array.from(combinedResults.values()).sort((a, b) => b.score - a.score);
+      result = lunrResults;
     }
     const searchResultDataset = document.createElement('div');
     searchResultDataset.classList.add('search-result-dataset');
