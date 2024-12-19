@@ -278,7 +278,7 @@ function searchIndex (index, trie, store, text) {
       // Filter documents for Lunr search
       const filteredDocuments = []
       trieDocIds.forEach((id) => {
-        filteredDocuments.add(store.documents[id])
+        filteredDocuments.push(store.documents[id])
       })
       if (filteredDocuments.length > 0) {
         // Rebuild a temporary index only with the filtered documents
