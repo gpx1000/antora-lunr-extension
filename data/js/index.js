@@ -1,7 +1,7 @@
 /* global CustomEvent, globalThis */
 'use strict'
 
-import { buildHighlightedText, findTermPosition, LevenshteinTrieUser } from './search-result-highlighting.mjs'
+import { buildHighlightedText, findTermPosition } from './search-result-highlighting.mjs'
 
 const config = document.getElementById('search-ui-script').dataset
 const snippetLength = parseInt(config.snippetLength || 100, 10)
@@ -376,15 +376,12 @@ function base64ToBytesArr (str) {
   return result
 }
 
-export function initSearch (lunr, data, trieData) {
+export function initSearch (lunr, data) {
   const start = performance.now()
   data = base64ToBytesArr(data)
   data = window.pako.inflate(data, { to: 'string' })
   const lunrdata = JSON.parse(data)
-  trieData = base64ToBytesArr(trieData)
-  const trieDataJSON = window.pako.inflate(trieData, { to: 'string' })
-  const index = { index: lunr.Index.load(lunrdata.index), store: data.store, trie: new LevenshteinTrieUser() }
-  index.trie.load(JSON.parse(trieDataJSON))
+  const index = { index: lunr.Index.load(lunrdata.index), store: data.store, trie: lunrdata.trie }
   enableSearchInput(true)
   searchInput.dispatchEvent(
     new CustomEvent('loadedindex', {

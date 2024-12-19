@@ -47,7 +47,7 @@ describe('generateSite()', () => {
     expect(searchIndexPath).to.be.a.file()
     global.lunr = {}
     global.antoraSearch = {}
-    global.antoraSearch.initSearch = function (lunr, index, _) {
+    global.antoraSearch.initSearch = function (lunr, index) {
       index = atob(index)
       index = index.split('').map((c) => c.charCodeAt(0))
       index = pako.inflate(index, { to: 'string' })
