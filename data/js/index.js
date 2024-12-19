@@ -1,7 +1,7 @@
 /* global CustomEvent, globalThis */
 'use strict'
 
-import { buildHighlightedText, findTermPosition } from './search-result-highlighting.mjs'
+import { buildHighlightedText, findTermPosition, LevenshteinTrieUser } from './search-result-highlighting.mjs'
 
 const config = document.getElementById('search-ui-script').dataset
 const snippetLength = parseInt(config.snippetLength || 100, 10)
@@ -381,9 +381,10 @@ function toggleFilter (e, index) {
   }
 }
 
-export function initSearch (lunr, data) {
+export function initSearch (lunr, data, trieData) {
   const start = performance.now()
-  const index = { index: lunr.Index.load(data.index), store: data.store }
+  const index = { index: lunr.Index.load(data.index), store: data.store, trie: new LevenshteinTrieUser() }
+  index.trie.load(trieData)
   enableSearchInput(true)
   searchInput.dispatchEvent(
     new CustomEvent('loadedindex', {
