@@ -8,6 +8,7 @@ const ospath = require('path')
 
 const FIXTURES_DIR = ospath.join(__dirname, 'fixtures')
 const WORK_DIR = ospath.join(__dirname, 'work')
+const pako = require('pako')
 
 const generateSite = require('@antora/site-generator')
 
@@ -46,7 +47,11 @@ describe('generateSite()', () => {
     expect(searchIndexPath).to.be.a.file()
     global.lunr = {}
     global.antoraSearch = {}
-    global.antoraSearch.initSearch = function (lunr, index) {
+    global.antoraSearch.initSearch = function (lunr, index, _) {
+      index = atob(index)
+      index = index.split('').map((c) => c.charCodeAt(0))
+      index = pako.inflate(index, { to: 'string' })
+      index = JSON.parse(index)
       expect(Object.keys(index.store.documents).length).to.equal(2)
       expect(
         Object.entries(index.store.documents).map(([key, value]) => ({

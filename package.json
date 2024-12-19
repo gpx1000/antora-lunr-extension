@@ -57,6 +57,7 @@
   },
   "devDependencies": {
     "@antora/site-generator": "3.0.3",
+    "pako": "^2.1.0",
     "chai": "~4.3",
     "chai-fs": "~2.0",
     "dirty-chai": "~2.0",
