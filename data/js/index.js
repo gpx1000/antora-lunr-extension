@@ -2,7 +2,6 @@
 'use strict'
 
 import { buildHighlightedText, findTermPosition, LevenshteinTrieUser } from './search-result-highlighting.mjs'
-import { pako } from 'pako'
 
 const config = document.getElementById('search-ui-script').dataset
 const snippetLength = parseInt(config.snippetLength || 100, 10)
@@ -369,11 +368,11 @@ export function initSearch (lunr, data, trieData) {
   const decoder = new TextDecoder()
   data = decoder.decode(data)
   data = data.split('').map((c) => c.charCodeAt(0)).map(String.fromCharCode)
-  data = pako.inflate(data, { to: 'string' })
+  data = window.pako.inflate(data, { to: 'string' })
   const lunrdata = JSON.parse(data)
   trieData = decoder.decode(trieData)
   trieData = trieData.split('').map((c) => c.charCodeAt(0)).map(String.fromCharCode)
-  const trieDataJSON = pako.inflate(trieData, { to: 'string' })
+  const trieDataJSON = window.pako.inflate(trieData, { to: 'string' })
   const index = { index: lunr.Index.load(lunrdata), store: data.store, trie: new LevenshteinTrieUser() }
   index.trie.load(trieDataJSON)
   enableSearchInput(true)

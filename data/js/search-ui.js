@@ -1,8 +1,8 @@
 (function (global, factory) {
-  typeof exports === 'object' && typeof module !== 'undefined' ? factory(exports, require('pako')) :
-  typeof define === 'function' && define.amd ? define(['exports', 'pako'], factory) :
-  (global = typeof globalThis !== 'undefined' ? globalThis : global || self, factory(global.antoraSearch = {}, global.pako));
-})(this, (function (exports, pako) { 'use strict';
+  typeof exports === 'object' && typeof module !== 'undefined' ? factory(exports) :
+  typeof define === 'function' && define.amd ? define(['exports'], factory) :
+  (global = typeof globalThis !== 'undefined' ? globalThis : global || self, factory(global.antoraSearch = {}));
+})(this, (function (exports) { 'use strict';
 
   /**
    * Splitting the text by the given positions.
@@ -677,11 +677,11 @@
     const decoder = new TextDecoder();
     data = decoder.decode(data);
     data = data.split('').map((c) => c.charCodeAt(0)).map(String.fromCharCode);
-    data = pako.pako.inflate(data, { to: 'string' });
+    data = window.pako.inflate(data, { to: 'string' });
     const lunrdata = JSON.parse(data);
     trieData = decoder.decode(trieData);
     trieData = trieData.split('').map((c) => c.charCodeAt(0)).map(String.fromCharCode);
-    const trieDataJSON = pako.pako.inflate(trieData, { to: 'string' });
+    const trieDataJSON = window.pako.inflate(trieData, { to: 'string' });
     const index = { index: lunr.Index.load(lunrdata), store: data.store, trie: new LevenshteinTrieUser() };
     index.trie.load(trieDataJSON);
     enableSearchInput(true);
