@@ -363,62 +363,26 @@ function toggleFilter (e, index) {
   }
 }
 
-const base64codes = [
-  255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
-  255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
-  255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255, 62, 255, 255, 255, 63,
-  52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 255, 255, 255, 0, 255, 255,
-  255, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14,
-  15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 255, 255, 255, 255, 255,
-  255, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
-  41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51,
-]
+function base64ToBytesArr (str) {
+  const abc = [...'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'] // base64 alphabet
+  const result = []
 
-function getBase64Code (charCode) {
-  if (charCode >= base64codes.length) {
-    throw new Error('Unable to parse base64 string.')
+  for (let i = 0; i < str.length / 4; i++) {
+    const chunk = [...str.slice(4 * i, 4 * i + 4)]
+    const bin = chunk.map((x) => abc.indexOf(x).toString(2).padStart(6, 0)).join('')
+    const bytes = bin.match(/.{1,8}/g).map((x) => +('0b' + x))
+    result.push(...bytes.slice(0, 3 - (str[4 * i + 2] === '=') - (str[4 * i + 3] === '=')))
   }
-  const code = base64codes[charCode]
-  if (code === 255) {
-    throw new Error('Unable to parse base64 string.')
-  }
-  return code
-}
-
-function base64ToBytes (str) {
-  if (str.length % 4 !== 0) {
-    throw new Error('Unable to parse base64 string.')
-  }
-  const index = str.indexOf('=')
-  if (index !== -1 && index < str.length - 2) {
-    throw new Error('Unable to parse base64 string.')
-  }
-  const missingOctets = str.endsWith('==') ? 2 : str.endsWith('=') ? 1 : 0
-  const n = str.length
-  const result = new Uint8Array(3 * (n / 4))
-  let buffer
-  for (let i = 0, j = 0; i < n; i += 4, j += 3) {
-    buffer =
-        getBase64Code(str.charCodeAt(i)) << 18 |
-        getBase64Code(str.charCodeAt(i + 1)) << 12 |
-        getBase64Code(str.charCodeAt(i + 2)) << 6 |
-        getBase64Code(str.charCodeAt(i + 3))
-    result[j] = buffer >> 16
-    result[j + 1] = (buffer >> 8) & 0xFF
-    result[j + 2] = buffer & 0xFF
-  }
-  return result.subarray(0, result.length - missingOctets)
+  return result
 }
 
 export function initSearch (lunr, data, trieData) {
   const start = performance.now()
   const decoder = new TextDecoder()
-  data = decoder.decode(base64ToBytes(data))
-  data = data.split('').map((c) => c.charCodeAt(0))
+  data = decoder.decode(base64ToBytesArr(data))
   data = window.pako.inflate(data, { to: 'string' })
   const lunrdata = JSON.parse(data)
-  trieData = decoder.decode(base64ToBytes(trieData))
-  trieData = trieData.split('').map((c) => c.charCodeAt(0))
+  trieData = decoder.decode(base64ToBytesArr(trieData))
   const trieDataJSON = window.pako.inflate(trieData, { to: 'string' })
   const index = { index: lunr.Index.load(lunrdata), store: data.store, trie: new LevenshteinTrieUser() }
   index.trie.load(trieDataJSON)
