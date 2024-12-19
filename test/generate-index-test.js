@@ -84,7 +84,7 @@ describe('generateIndex()', () => {
   it('should provide a levenshtein patricia trie for fuzzy search', () => {
     const contentCatalog = buildContentCatalog(playbook, [
       {
-        contents: Buffer.from('<article class="doc"><p>foo</p></article>'),
+        contents: Buffer.from('<article class="doc"><p><h2>foo</h2>bar</p></article>'),
         src: {
           component: 'component-a',
           version: '2.0',
@@ -93,7 +93,7 @@ describe('generateIndex()', () => {
       },
     ])
     const index = generateIndex(playbook, contentCatalog)
-    expect(index.store.trie.searchWithLevenshteinWithData('foo', 1)).to.have.lengthOf(1)
+    expect(index.store.trie.searchWithLevenshteinWithData('fao', 2), `this is the results ${index.store.trie.save()}`).to.have.lengthOf(1)
   })
 
   it('should use provided logger to log info message that search index is being built with languages', () => {
