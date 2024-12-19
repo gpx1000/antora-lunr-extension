@@ -306,7 +306,7 @@ function searchIndex (index, trie, store, text) {
     })
 
     lunrResults.forEach((result) => {
-      const doc = store.documents.find((d) => d.id === parseInt(result.ref, 10))
+      const doc = store.documents[result.ref]
       if (doc) {
         combinedResults.set(doc.id, {
           ...doc,
