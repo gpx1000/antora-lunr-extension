@@ -224,12 +224,13 @@
 
     // Load the Trie from a JSON string
     load (jsonString) {
-      this.root = JSON.parse(jsonString, (key, value) => {
-        if (Array.isArray(value)) {
-          return new Map(value) // Convert array of entries back to Map
-        }
-        return value
-      });
+      this.root = jsonString;
+      // this.root = JSON.parse(jsonString, (key, value) => {
+      //   if (Array.isArray(value)) {
+      //     return new Map(value) // Convert array of entries back to Map
+      //   }
+      //   return value
+      // })
     }
 
     insertWithData (word, data) {
