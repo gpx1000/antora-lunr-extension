@@ -224,13 +224,13 @@
 
     // Load the Trie from a JSON string
     load (jsonString) {
-      // this.root = jsonString
-      this.root = JSON.parse(jsonString, (key, value) => {
-        if (Array.isArray(value)) {
-          return new Map(value) // Convert array of entries back to Map
-        }
-        return value
-      });
+      this.root = jsonString;
+      // this.root = JSON.parse(jsonString, (key, value) => {
+      //   if (Array.isArray(value)) {
+      //     return new Map(value) // Convert array of entries back to Map
+      //   }
+      //   return value
+      // })
     }
 
     insertWithData (word, data) {
@@ -693,7 +693,7 @@
     trieData = base64ToBytesArr(trieData);
     const trieDataJSON = window.pako.inflate(trieData, { to: 'string' });
     const index = { index: lunr.Index.load(lunrdata.index), store: data.store, trie: new LevenshteinTrieUser() };
-    index.trie.load(trieDataJSON);
+    index.trie.load(JSON.parse(trieDataJSON));
     enableSearchInput(true);
     searchInput.dispatchEvent(
       new CustomEvent('loadedindex', {
