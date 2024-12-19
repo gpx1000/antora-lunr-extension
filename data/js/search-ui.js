@@ -674,11 +674,12 @@
 
   function initSearch (lunr, data, trieData) {
     const start = performance.now();
-    data = atob(data);
+    const decoder = new TextDecoder();
+    data = decoder.decode(data);
     data = data.split('').map((c) => c.charCodeAt(0)).map(String.fromCharCode);
     data = pako.pako.inflate(data, { to: 'string' });
     const lunrdata = JSON.parse(data);
-    trieData = atob(trieData);
+    trieData = decoder.decode(trieData);
     trieData = trieData.split('').map((c) => c.charCodeAt(0)).map(String.fromCharCode);
     const trieDataJSON = pako.pako.inflate(trieData, { to: 'string' });
     const index = { index: lunr.Index.load(lunrdata), store: data.store, trie: new LevenshteinTrieUser() };
