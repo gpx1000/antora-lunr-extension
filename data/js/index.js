@@ -263,8 +263,7 @@ function searchIndex (index, store, text) {
   }
   const maxLevenshteinDistance = 2
   const lunrBoost = 1
-  const trieResults = globalThis
-    .LevenshteinTrie(store.trie)
+  const trieResults = store.trie
     .searchWithLevenshteinWithData(text.toLowerCase(), maxLevenshteinDistance)
   let result
   if (!trieResults) {
