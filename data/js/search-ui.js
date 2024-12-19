@@ -569,7 +569,7 @@
     if (text.trim() === '') {
       return
     }
-    const maxLevenshteinDistance = 2;
+    const maxLevenshteinDistance = 3;
     const lunrBoost = 1;
     const trieResults = store.trie
       .searchWithLevenshteinWithData(text.toLowerCase(), maxLevenshteinDistance);
@@ -579,7 +579,7 @@
     } else {
       // Extract unique document IDs from Trie results
       const trieDocIds = new Set();
-      trieResults.forEach((r) => r.data.forEach((d) => trieDocIds.add(d.id)));
+      trieResults.forEach((r) => r.data.forEach((d) => trieDocIds.add(d)));
 
       let lunrResults = [];
       if (trieDocIds.size > 0) {
