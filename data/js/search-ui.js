@@ -603,6 +603,8 @@
         } else {
           lunrResults = search(index, store.documents, text);
         }
+      } else {
+        lunrResults = search(index, store.documents, text);
       }
       result = lunrResults;
     }
