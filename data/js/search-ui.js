@@ -600,6 +600,8 @@
             filteredDocuments.forEach((doc) => this.add(doc));
           });
           lunrResults = search(tempLunrIndex, filteredDocuments, text);
+        } else {
+          lunrResults = search(index, store.documents, text);
         }
       }
       result = lunrResults;
