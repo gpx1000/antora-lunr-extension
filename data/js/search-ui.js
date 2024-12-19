@@ -585,7 +585,10 @@
       let lunrResults = [];
       if (trieDocIds.size > 0) {
         // Filter documents for Lunr search
-        const filteredDocuments = store.documents.filter((doc) => trieDocIds.has(doc.id));
+        const filteredDocuments = [];
+        trieDocIds.forEach((id) => {
+          filteredDocuments.add(store.documents[id]);
+        });
         if (filteredDocuments.length > 0) {
           // Rebuild a temporary index only with the filtered documents
           const tempLunrIndex = globalThis.lunr(function () {
