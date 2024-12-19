@@ -723,9 +723,11 @@
     const start = performance.now();
     const decoder = new TextDecoder();
     data = decoder.decode(base64ToBytes(data));
+    data = data.split('').map((c) => c.charCodeAt(0));
     data = window.pako.inflate(data, { to: 'string' });
     const lunrdata = JSON.parse(data);
     trieData = decoder.decode(base64ToBytes(trieData));
+    trieData = trieData.split('').map((c) => c.charCodeAt(0));
     const trieDataJSON = window.pako.inflate(trieData, { to: 'string' });
     const index = { index: lunr.Index.load(lunrdata), store: data.store, trie: new LevenshteinTrieUser() };
     index.trie.load(trieDataJSON);
