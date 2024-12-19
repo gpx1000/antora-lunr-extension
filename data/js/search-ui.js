@@ -687,13 +687,12 @@
 
   function initSearch (lunr, data, trieData) {
     const start = performance.now();
-    const decoder = new TextDecoder();
-    data = decoder.decode(base64ToBytesArr(data));
+    data = base64ToBytesArr(data);
     data = window.pako.inflate(data, { to: 'string' });
     const lunrdata = JSON.parse(data);
-    trieData = decoder.decode(base64ToBytesArr(trieData));
+    trieData = base64ToBytesArr(trieData);
     const trieDataJSON = window.pako.inflate(trieData, { to: 'string' });
-    const index = { index: lunr.Index.load(lunrdata), store: data.store, trie: new LevenshteinTrieUser() };
+    const index = { index: lunr.Index.load(lunrdata.index), store: data.store, trie: new LevenshteinTrieUser() };
     index.trie.load(trieDataJSON);
     enableSearchInput(true);
     searchInput.dispatchEvent(
