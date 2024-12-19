@@ -565,14 +565,14 @@
     return result
   }
 
-  function searchIndex (index, store, text) {
+  function searchIndex (index, trie, store, text) {
     clearSearchResults(false);
     if (text.trim() === '') {
       return
     }
     const maxLevenshteinDistance = 3;
     const lunrBoost = 1;
-    const trieResults = store.trie
+    const trieResults = trie
       .searchWithLevenshteinWithData(text.toLowerCase(), maxLevenshteinDistance);
     let result;
     if (!trieResults) {
@@ -670,7 +670,7 @@
     const query = searchInput.value;
     try {
       if (!query) return clearSearchResults()
-      searchIndex(index.index, index.store, query);
+      searchIndex(index.index, index.trie, index.store, query);
     } catch (err) {
       if (err instanceof globalThis.lunr.QueryParseError) {
         if (debug) {
