@@ -265,8 +265,12 @@ function searchIndex (index, trie, store, text) {
   const trieResults = trie
     .searchWithLevenshteinWithData(text.toLowerCase(), maxLevenshteinDistance)
   let result
+  const recheck = /\s/.test(text)
   if (!trieResults) {
     result = search(index, store.documents, text)
+    if (recheck) {
+      result = search(index, store.documents, text.replace(/\s/g, '_'))
+    }
   } else {
     // Extract unique document IDs from Trie results
     const trieDocIds = new Set()
@@ -291,11 +295,20 @@ function searchIndex (index, trie, store, text) {
           filteredDocuments.forEach((doc) => this.add(doc))
         })
         lunrResults = search(tempLunrIndex, filteredDocuments, text)
+        if (recheck) {
+          result = search(index, store.documents, text.replace(/\s/g, '_'))
+        }
       } else {
         lunrResults = search(index, store.documents, text)
+        if (recheck) {
+          result = search(index, store.documents, text.replace(/\s/g, '_'))
+        }
       }
     } else {
       lunrResults = search(index, store.documents, text)
+      if (recheck) {
+        result = search(index, store.documents, text.replace(/\s/g, '_'))
+      }
     }
     result = lunrResults
   }

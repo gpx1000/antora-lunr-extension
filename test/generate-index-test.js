@@ -737,7 +737,7 @@ describe('generateIndex()', () => {
       searchResultItems,
       'Where to begin title must be found'
     ).to.have.lengthOf(1)
-    expect(searchResultItems[0].ref).to.equal('1-2')
+    expect(searchResultItems[0].ref).to.equal('1-3')
     expect(index.store.documents['1'].url).to.equal('/hello/1.0/')
     const sectionTitles = index.store.documents['1'].titles
     expect(sectionTitles).to.have.deep.members([
@@ -747,12 +747,22 @@ describe('generateIndex()', () => {
         id: 1,
       },
       {
-        text: 'Where to begin',
-        hash: 'where-to-begin',
+        text: 'Manage_docs_as_code',
+        hash: 'manage-docs-as-code',
         id: 2,
       },
+      {
+        text: 'Where to begin',
+        hash: 'where-to-begin',
+        id: 3,
+      },
+      {
+        text: 'Where_to_begin',
+        hash: 'where-to-begin',
+        id: 4,
+      },
     ])
-    expect(sectionTitles.find((title) => title.id === 2).hash).to.equal(
+    expect(sectionTitles.find((title) => title.id === 3).hash).to.equal(
       'where-to-begin'
     )
   })
