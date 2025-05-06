@@ -45,6 +45,8 @@ describe('generateSite()', () => {
     expect(env).to.not.have.property('SITE_SEARCH_PROVIDER')
     const searchIndexPath = ospath.join(outputDir, 'search-index.js')
     expect(searchIndexPath).to.be.a.file()
+    const mdIndexPath = ospath.join(outputDir, 'site-index.md')
+    expect(mdIndexPath).to.be.a.file()
     global.lunr = {}
     global.antoraSearch = {}
     global.antoraSearch.initSearch = function (lunr, index, _) {

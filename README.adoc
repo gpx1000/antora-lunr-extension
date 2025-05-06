@@ -97,6 +97,20 @@ The next time you build your documentation site, the extension will automaticall
 The location of this file depends on the value of `output.dir` key in your playbook.
 When using the {url-antora-docs}/playbook/configure-output/#default-output-dir[default output dir], that location is _build/site/search-index.js_.
 
+=== Markdown index for LLM MCP
+
+In addition to the JavaScript search index, the extension also generates a markdown file named _site-index.md_ at the root of the site.
+This markdown file contains a structured representation of the site's content, organized by component and version.
+Each document entry includes:
+
+* The document title with a link to the document
+* Section titles with links to the sections
+* Keywords (if available)
+* A short excerpt of the document content
+
+This markdown file is designed to be used with Large Language Model (LLM) Machine Comprehension Processing (MCP) through GitHub or other platforms that support markdown.
+It provides a comprehensive overview of the site's content in a format that can be easily processed by LLMs.
+
 === Set (or don't set) the site URL
 
 The search is not coupled to the value of the site URL.
