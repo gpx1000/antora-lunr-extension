@@ -45,8 +45,13 @@ describe('generateSite()', () => {
     expect(env).to.not.have.property('SITE_SEARCH_PROVIDER')
     const searchIndexPath = ospath.join(outputDir, 'search-index.js')
     expect(searchIndexPath).to.be.a.file()
-    const mdIndexPath = ospath.join(outputDir, 'site-index.md')
-    expect(mdIndexPath).to.be.a.file()
+    const mdDocsDir = ospath.join(outputDir, 'site-docs')
+    expect(mdDocsDir).to.be.a.directory()
+    // Check that at least one markdown file exists in the directory
+    const mdFiles = await fsp.readdir(mdDocsDir)
+    expect(mdFiles.length).to.be.greaterThan(0)
+    // eslint-disable-next-line no-unused-expressions
+    expect(mdFiles.some((file) => file.endsWith('.md'))).to.be.true
     global.lunr = {}
     global.antoraSearch = {}
     global.antoraSearch.initSearch = function (lunr, index, _) {
