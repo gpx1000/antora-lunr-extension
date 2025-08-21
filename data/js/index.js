@@ -379,47 +379,95 @@ function toggleFilter (e, index) {
 }
 
 function base64ToBytesArr (str) {
+  // Fast path using native atob when available
+  if (typeof globalThis.atob === 'function') {
+    try {
+      const binary = globalThis.atob(str)
+      const len = binary.length
+      const bytes = new Uint8Array(len)
+      for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i)
+      return bytes
+    } catch (e) {
+      // fall through to manual decoder on any error
+    }
+  }
+  // Fallback manual decoder
   const abc = [...'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'] // base64 alphabet
   const result = []
-
   for (let i = 0; i < str.length / 4; i++) {
     const chunk = [...str.slice(4 * i, 4 * i + 4)]
     const bin = chunk.map((x) => abc.indexOf(x).toString(2).padStart(6, 0)).join('')
     const bytes = bin.match(/.{1,8}/g).map((x) => +('0b' + x))
     result.push(...bytes.slice(0, 3 - (str[4 * i + 2] === '=') - (str[4 * i + 3] === '=')))
   }
-  return result
+  return new Uint8Array(result)
 }
 
 export function initSearch (lunr, data, trieData) {
   const start = performance.now()
-  data = base64ToBytesArr(data)
-  data = window.pako.inflate(data, { to: 'string' })
-  const lunrdata = JSON.parse(data)
-  trieData = base64ToBytesArr(trieData)
-  const trieDataJSON = window.pako.inflate(trieData, { to: 'string' })
-  const index = { index: lunr.Index.load(lunrdata.index), store: lunrdata.store, trie: new LevenshteinTrieUser() }
-  index.trie.load(JSON.parse(trieDataJSON))
+  let loadedIndex = null
+  let loadingPromise = null
+
+  const ensureLoaded = async () => {
+    if (loadedIndex) return loadedIndex
+    if (!loadingPromise) {
+      loadingPromise = new Promise((resolve) => {
+        const doLoad = () => {
+          try {
+            const dataBytes = base64ToBytesArr(data)
+            const lunrJSON = window.pako.inflate(dataBytes, { to: 'string' })
+            const lunrdata = JSON.parse(lunrJSON)
+            const trieBytes = base64ToBytesArr(trieData)
+            const trieDataJSON = window.pako.inflate(trieBytes, { to: 'string' })
+            const idx = {
+              index: lunr.Index.load(lunrdata.index),
+              store: lunrdata.store,
+              trie: new LevenshteinTrieUser(),
+            }
+            idx.trie.load(JSON.parse(trieDataJSON))
+            loadedIndex = idx
+            // announce load completion
+            searchInput.dispatchEvent(new CustomEvent('loadedindex', { detail: { took: performance.now() - start } }))
+            resolve(idx)
+          } catch (e) {
+            console.error('Failed to initialize search index', e)
+            resolve(null)
+          }
+        }
+        if ('requestIdleCallback' in globalThis) {
+          globalThis.requestIdleCallback(doLoad, { timeout: 1000 })
+        } else {
+          setTimeout(doLoad, 0)
+        }
+      })
+    }
+    return loadingPromise
+  }
+
+  // Enable UI immediately; load index on first interaction or idle time
   enableSearchInput(true)
-  searchInput.dispatchEvent(
-    new CustomEvent('loadedindex', {
-      detail: {
-        took: performance.now() - start,
-      },
-    })
-  )
+
+  // Preload on first focus, once
+  const preloadOnce = () => { ensureLoaded().then(() => {}) }
+  searchInput.addEventListener('focus', preloadOnce, { once: true })
+
   searchInput.addEventListener(
     'keydown',
-    debounce(function (e) {
+    debounce(async function (e) {
       if (e.key === 'Escape' || e.key === 'Esc') return clearSearchResults(true)
-      executeSearch(index)
+      const idx = await ensureLoaded()
+      if (idx) executeSearch(idx)
     }, 100)
   )
   searchInput.addEventListener('click', confineEvent)
   searchResultContainer.addEventListener('click', confineEvent)
   if (facetFilterInput) {
     facetFilterInput.parentElement.addEventListener('click', confineEvent)
-    facetFilterInput.addEventListener('change', (e) => toggleFilter(e, index))
+    facetFilterInput.addEventListener('change', async (e) => {
+      const idx = await ensureLoaded()
+      if (idx) toggleFilter(e, idx)
+    })
+    facetFilterInput.addEventListener('focus', preloadOnce, { once: true })
   }
   document.documentElement.addEventListener('click', clearSearchResults)
 }
@@ -485,7 +533,11 @@ async function loadModuleEntry (lunr, entry) {
     idbSet({ key: cacheKey, id: entry.id, hash: entry.hash, lunrJSON, trieJSON })
   }
   const lunrdata = JSON.parse(lunrJSON)
-  const idx = { index: lunr.Index.load(lunrdata.index), store: lunrdata.store, trie: new LevenshteinTrieUser() }
+  const idx = {
+    index: lunr.Index.load(lunrdata.index),
+    store: lunrdata.store,
+    trie: new LevenshteinTrieUser(),
+  }
   idx.trie.load(JSON.parse(trieJSON))
   loadedModules.push({ id: entry.id, info: entry, index: idx.index, store: idx.store, trie: idx.trie })
   return idx
