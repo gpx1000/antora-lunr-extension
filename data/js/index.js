@@ -51,15 +51,20 @@ function highlightText (doc, terms) {
 }
 
 function getTermPosition (text, terms) {
-  const positions = terms
-    .map((term) => findTermPosition(globalThis.lunr, term, text))
-    .filter((position) => position.length > 0)
-    .sort((p1, p2) => p1.start - p2.start)
-
-  if (positions.length === 0) {
-    return []
+  if (!terms || terms.length === 0) return []
+  const textLower = text.toLowerCase()
+  const seen = new Set()
+  const positions = []
+  for (const term of terms) {
+    if (term == null) continue
+    const t = String(term).toLowerCase()
+    if (seen.has(t)) continue
+    seen.add(t)
+    const pos = findTermPosition(globalThis.lunr, t, text, textLower)
+    if (pos.length > 0) positions.push(pos)
   }
-  return positions
+  positions.sort((p1, p2) => p1.start - p2.start)
+  return positions.length === 0 ? [] : positions
 }
 
 function highlightHit (searchMetadata, sectionTitle, doc) {
