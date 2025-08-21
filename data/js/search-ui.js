@@ -773,6 +773,7 @@
   }
 
   const loadedModules = [];
+  let siteRootPrefix = '';
 
   async function loadModuleEntry (lunr, entry) {
     const cacheKey = entry.id + ':' + entry.hash;
@@ -783,7 +784,8 @@
       lunrJSON = cached.lunrJSON;
       trieJSON = cached.trieJSON;
     } else {
-      const res = await fetch(entry.url);
+      const fetchUrl = entry.url && entry.url.startsWith('/') ? siteRootPrefix + entry.url : entry.url;
+      const res = await fetch(fetchUrl);
       const json = await res.json();
       const dataBytes = base64ToBytesArr(json.lunrData);
       lunrJSON = globalThis.pako.inflate(dataBytes, { to: 'string' });
@@ -827,29 +829,42 @@
   async function bootstrap (lunr, manifest, siteRootPath) {
     const start = performance.now();
     try {
+      siteRootPrefix = siteRootPath || '';
       const first = manifest.modules[0];
       if (!first) return
       await loadModuleEntry(lunr, first);
       enableSearchInput(true);
       searchInput.dispatchEvent(new CustomEvent('loadedindex', { detail: { took: performance.now() - start } }));
+
+      const startBackgroundOnce = (() => {
+        let started = false;
+        const rest = manifest.modules.slice(1);
+        const loadNext = async (i) => {
+          if (i >= rest.length) return
+          try { await loadModuleEntry(lunr, rest[i]); } catch (e) {}
+          setTimeout(() => loadNext(i + 1), 50);
+        };
+        return () => {
+          if (started) return
+          started = true;
+          setTimeout(() => loadNext(0), 0);
+        }
+      })();
+
       searchInput.addEventListener('keydown', debounce(function (e) {
         if (e.key === 'Escape' || e.key === 'Esc') return clearSearchResults(true)
+        startBackgroundOnce();
         multiExecuteSearch();
       }, 100));
+      searchInput.addEventListener('focus', startBackgroundOnce, { once: true });
       searchInput.addEventListener('click', confineEvent);
       searchResultContainer.addEventListener('click', confineEvent);
       if (facetFilterInput) {
         facetFilterInput.parentElement.addEventListener('click', confineEvent);
         facetFilterInput.addEventListener('change', () => multiExecuteSearch());
+        facetFilterInput.addEventListener('focus', startBackgroundOnce, { once: true });
       }
       document.documentElement.addEventListener('click', clearSearchResults);
-      const rest = manifest.modules.slice(1);
-      const loadNext = async (i) => {
-        if (i >= rest.length) return
-        try { await loadModuleEntry(lunr, rest[i]); } catch (e) {}
-        setTimeout(() => loadNext(i + 1), 50);
-      };
-      setTimeout(() => loadNext(0), 0);
     } catch (e) {
       console.error('Failed to bootstrap modular search', e);
       enableSearchInput(false);

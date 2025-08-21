@@ -10,7 +10,7 @@
     var script = document.getElementById('search-ui-script');
     var siteRoot = (script && script.getAttribute('data-site-root-path')) || '';
     var manifestUrl = siteRoot + '/search-index/manifest.json';
-    fetch(manifestUrl, { cache: 'no-cache' })
+    fetch(manifestUrl)
       .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('manifest not found')) })
       .then(function (manifest) { antoraSearch.bootstrap(lunr, manifest, siteRoot); })
       .catch(function () {
