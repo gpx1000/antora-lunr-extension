@@ -733,9 +733,133 @@
     document.documentElement.addEventListener('click', clearSearchResults);
   }
 
+  // Modular loading with IndexedDB cache of expanded indexes
+  const DB_NAME = 'antora-search-index';
+  const DB_STORE = 'modules';
+  const DB_VERSION = 1;
+  function openDB () {
+    return new Promise((resolve, reject) => {
+      if (!('indexedDB' in globalThis)) return resolve(null)
+      const req = globalThis.indexedDB.open(DB_NAME, DB_VERSION);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(DB_STORE)) db.createObjectStore(DB_STORE, { keyPath: 'key' });
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => resolve(null);
+    })
+  }
+  async function idbGet (key) {
+    const db = await openDB();
+    if (!db) return null
+    return new Promise((resolve) => {
+      const tx = db.transaction(DB_STORE, 'readonly');
+      const store = tx.objectStore(DB_STORE);
+      const req = store.get(key);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => resolve(null);
+    })
+  }
+  async function idbSet (record) {
+    const db = await openDB();
+    if (!db) return false
+    return new Promise((resolve) => {
+      const tx = db.transaction(DB_STORE, 'readwrite');
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = () => resolve(false);
+      const store = tx.objectStore(DB_STORE);
+      store.put(record);
+    })
+  }
+
+  const loadedModules = [];
+
+  async function loadModuleEntry (lunr, entry) {
+    const cacheKey = entry.id + ':' + entry.hash;
+    const cached = await idbGet(cacheKey);
+    let lunrJSON;
+    let trieJSON;
+    if (cached && cached.lunrJSON && cached.trieJSON) {
+      lunrJSON = cached.lunrJSON;
+      trieJSON = cached.trieJSON;
+    } else {
+      const res = await fetch(entry.url);
+      const json = await res.json();
+      const dataBytes = base64ToBytesArr(json.lunrData);
+      lunrJSON = globalThis.pako.inflate(dataBytes, { to: 'string' });
+      const trieBytes = base64ToBytesArr(json.trieData);
+      trieJSON = globalThis.pako.inflate(trieBytes, { to: 'string' });
+      idbSet({ key: cacheKey, id: entry.id, hash: entry.hash, lunrJSON, trieJSON });
+    }
+    const lunrdata = JSON.parse(lunrJSON);
+    const idx = { index: lunr.Index.load(lunrdata.index), store: lunrdata.store, trie: new LevenshteinTrieUser() };
+    idx.trie.load(JSON.parse(trieJSON));
+    loadedModules.push({ id: entry.id, info: entry, index: idx.index, store: idx.store, trie: idx.trie });
+    return idx
+  }
+
+  function multiExecuteSearch () {
+    const query = searchInput.value;
+    if (!query) return clearSearchResults()
+    clearSearchResults(false);
+    let any = false;
+    for (const mod of loadedModules) {
+      let result = search(mod.index, mod.store.documents, query);
+      if (result.length === 0 && /\s/.test(query)) {
+        result = search(mod.index, mod.store.documents, query.replace(/\s/g, '_'));
+      }
+      const dataset = document.createElement('div');
+      dataset.classList.add('search-result-dataset');
+      searchResultContainer.appendChild(dataset);
+      if (result.length > 0) {
+        any = true;
+        createSearchResult(result, mod.store, dataset);
+      }
+    }
+    if (!any) {
+      const dataset = document.createElement('div');
+      dataset.classList.add('search-result-dataset');
+      searchResultContainer.appendChild(dataset);
+      dataset.appendChild(createNoResult(query));
+    }
+  }
+
+  async function bootstrap (lunr, manifest, siteRootPath) {
+    const start = performance.now();
+    try {
+      const first = manifest.modules[0];
+      if (!first) return
+      await loadModuleEntry(lunr, first);
+      enableSearchInput(true);
+      searchInput.dispatchEvent(new CustomEvent('loadedindex', { detail: { took: performance.now() - start } }));
+      searchInput.addEventListener('keydown', debounce(function (e) {
+        if (e.key === 'Escape' || e.key === 'Esc') return clearSearchResults(true)
+        multiExecuteSearch();
+      }, 100));
+      searchInput.addEventListener('click', confineEvent);
+      searchResultContainer.addEventListener('click', confineEvent);
+      if (facetFilterInput) {
+        facetFilterInput.parentElement.addEventListener('click', confineEvent);
+        facetFilterInput.addEventListener('change', () => multiExecuteSearch());
+      }
+      document.documentElement.addEventListener('click', clearSearchResults);
+      const rest = manifest.modules.slice(1);
+      const loadNext = async (i) => {
+        if (i >= rest.length) return
+        try { await loadModuleEntry(lunr, rest[i]); } catch (e) {}
+        setTimeout(() => loadNext(i + 1), 50);
+      };
+      setTimeout(() => loadNext(0), 0);
+    } catch (e) {
+      console.error('Failed to bootstrap modular search', e);
+      enableSearchInput(false);
+    }
+  }
+
   // disable the search input until the index is loaded
   enableSearchInput(false);
 
+  exports.bootstrap = bootstrap;
   exports.initSearch = initSearch;
 
   Object.defineProperty(exports, '__esModule', { value: true });
