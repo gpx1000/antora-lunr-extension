@@ -388,8 +388,14 @@
   }
 
   function createSearchResult (result, store, searchResultDataset) {
+    // Batch DOM updates using a DocumentFragment and cap the number of rendered items
+    const MAX_RESULTS_PER_DATASET = 200;
+    const frag = document.createDocumentFragment();
     let currentComponent;
-    result.forEach(function (item) {
+    const total = result.length;
+    const limit = total > MAX_RESULTS_PER_DATASET ? MAX_RESULTS_PER_DATASET : total;
+    for (let i = 0; i < limit; i++) {
+      const item = result[i];
       const ids = item.ref.split('-');
       const docId = ids[0];
       const doc = store.documents[docId];
@@ -409,11 +415,19 @@
         const { title, displayVersion } = componentVersion;
         const componentVersionText = `${title}${doc.version && displayVersion ? ` ${displayVersion}` : ''}`;
         searchResultComponentHeader.appendChild(document.createTextNode(componentVersionText));
-        searchResultDataset.appendChild(searchResultComponentHeader);
+        frag.appendChild(searchResultComponentHeader);
         currentComponent = componentVersion;
       }
-      searchResultDataset.appendChild(createSearchResultItem(doc, sectionTitle, item, highlightingResult));
-    });
+      frag.appendChild(createSearchResultItem(doc, sectionTitle, item, highlightingResult));
+    }
+    // Append a note if results were truncated
+    if (total > limit) {
+      const note = document.createElement('div');
+      note.classList.add('search-result-more');
+      note.textContent = `Showing top ${limit} of ${total} results. Refine your search to narrow results.`;
+      frag.appendChild(note);
+    }
+    searchResultDataset.appendChild(frag);
   }
 
   function createSearchResultItem (doc, sectionTitle, item, highlightingResult) {
@@ -766,7 +780,7 @@
         if (e.key === 'Escape' || e.key === 'Esc') return clearSearchResults(true)
         const idx = await ensureLoaded();
         if (idx) executeSearch(idx);
-      }, 100)
+      }, 200)
     );
     searchInput.addEventListener('click', confineEvent);
     searchResultContainer.addEventListener('click', confineEvent);
@@ -857,6 +871,7 @@
     if (!query) return clearSearchResults()
     clearSearchResults(false);
     let any = false;
+    const frag = document.createDocumentFragment();
     for (const mod of loadedModules) {
       let result = search(mod.index, mod.store.documents, query);
       if (result.length === 0 && /\s/.test(query)) {
@@ -864,18 +879,19 @@
       }
       const dataset = document.createElement('div');
       dataset.classList.add('search-result-dataset');
-      searchResultContainer.appendChild(dataset);
       if (result.length > 0) {
         any = true;
         createSearchResult(result, mod.store, dataset);
       }
+      frag.appendChild(dataset);
     }
     if (!any) {
       const dataset = document.createElement('div');
       dataset.classList.add('search-result-dataset');
-      searchResultContainer.appendChild(dataset);
       dataset.appendChild(createNoResult(query));
+      frag.appendChild(dataset);
     }
+    searchResultContainer.appendChild(frag);
   }
 
   async function bootstrap (lunr, manifest, siteRootPath) {
@@ -907,7 +923,7 @@
         if (e.key === 'Escape' || e.key === 'Esc') return clearSearchResults(true)
         startBackgroundOnce();
         multiExecuteSearch();
-      }, 100));
+      }, 200));
       searchInput.addEventListener('focus', startBackgroundOnce, { once: true });
       searchInput.addEventListener('click', confineEvent);
       searchResultContainer.addEventListener('click', confineEvent);
