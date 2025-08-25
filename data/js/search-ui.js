@@ -87,26 +87,22 @@
    * @param term
    * @return {{start: number, length: number}}
    */
-  function findTermPosition (lunr, term, text) {
-    const str = text.toLowerCase();
-    // const len = str.length
-
-    // experiment with avoiding regex
-    const index = str.indexOf(term);
-    const len = str.substr(index).match(/^[^.,\s]*/)[0].length;
-
-    if (index === -1) {
-      // Not found
-      return {
-        start: 0,
-        length: 0,
-      }
-    } else {
-      return {
-        start: index,
-        length: len,
-      }
+  function findTermPosition (lunr, term, text, textLower) {
+    // Use provided pre-lowercased text when available to avoid repeated allocations
+    const str = textLower || text.toLowerCase();
+    const t = typeof term === 'string' ? term.toLowerCase() : String(term);
+    const index = str.indexOf(t);
+    if (index === -1) return { start: 0, length: 0 }
+    // Extend to the end of the token (stop at '.', ',' or whitespace) without regex
+    let end = index + t.length;
+    const n = str.length;
+    while (end < n) {
+      const ch = str.charCodeAt(end);
+      // stop on period (.) 46, comma (,) 44 or any whitespace
+      if (ch === 46 || ch === 44 || ch === 32 || ch === 9 || ch === 10 || ch === 13 || ch === 160) break
+      end++;
     }
+    return { start: index, length: end - index }
   }
 
   class TrieNode {
@@ -360,15 +356,20 @@
   }
 
   function getTermPosition (text, terms) {
-    const positions = terms
-      .map((term) => findTermPosition(globalThis.lunr, term, text))
-      .filter((position) => position.length > 0)
-      .sort((p1, p2) => p1.start - p2.start);
-
-    if (positions.length === 0) {
-      return []
+    if (!terms || terms.length === 0) return []
+    const textLower = text.toLowerCase();
+    const seen = new Set();
+    const positions = [];
+    for (const term of terms) {
+      if (term == null) continue
+      const t = String(term).toLowerCase();
+      if (seen.has(t)) continue
+      seen.add(t);
+      const pos = findTermPosition(globalThis.lunr, t, text, textLower);
+      if (pos.length > 0) positions.push(pos);
     }
-    return positions
+    positions.sort((p1, p2) => p1.start - p2.start);
+    return positions.length === 0 ? [] : positions
   }
 
   function highlightHit (searchMetadata, sectionTitle, doc) {
@@ -388,8 +389,14 @@
   }
 
   function createSearchResult (result, store, searchResultDataset) {
+    // Batch DOM updates using a DocumentFragment and cap the number of rendered items
+    const MAX_RESULTS_PER_DATASET = 200;
+    const frag = document.createDocumentFragment();
     let currentComponent;
-    result.forEach(function (item) {
+    const total = result.length;
+    const limit = total > MAX_RESULTS_PER_DATASET ? MAX_RESULTS_PER_DATASET : total;
+    for (let i = 0; i < limit; i++) {
+      const item = result[i];
       const ids = item.ref.split('-');
       const docId = ids[0];
       const doc = store.documents[docId];
@@ -409,11 +416,19 @@
         const { title, displayVersion } = componentVersion;
         const componentVersionText = `${title}${doc.version && displayVersion ? ` ${displayVersion}` : ''}`;
         searchResultComponentHeader.appendChild(document.createTextNode(componentVersionText));
-        searchResultDataset.appendChild(searchResultComponentHeader);
+        frag.appendChild(searchResultComponentHeader);
         currentComponent = componentVersion;
       }
-      searchResultDataset.appendChild(createSearchResultItem(doc, sectionTitle, item, highlightingResult));
-    });
+      frag.appendChild(createSearchResultItem(doc, sectionTitle, item, highlightingResult));
+    }
+    // Append a note if results were truncated
+    if (total > limit) {
+      const note = document.createElement('div');
+      note.classList.add('search-result-more');
+      note.textContent = `Showing top ${limit} of ${total} results. Refine your search to narrow results.`;
+      frag.appendChild(note);
+    }
+    searchResultDataset.appendChild(frag);
   }
 
   function createSearchResultItem (doc, sectionTitle, item, highlightingResult) {
@@ -688,54 +703,247 @@
   }
 
   function base64ToBytesArr (str) {
+    // Fast path using native atob when available
+    if (typeof globalThis.atob === 'function') {
+      try {
+        const binary = globalThis.atob(str);
+        const len = binary.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
+        return bytes
+      } catch (e) {
+        // fall through to manual decoder on any error
+      }
+    }
+    // Fallback manual decoder
     const abc = [...'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/']; // base64 alphabet
     const result = [];
-
     for (let i = 0; i < str.length / 4; i++) {
       const chunk = [...str.slice(4 * i, 4 * i + 4)];
       const bin = chunk.map((x) => abc.indexOf(x).toString(2).padStart(6, 0)).join('');
       const bytes = bin.match(/.{1,8}/g).map((x) => +('0b' + x));
       result.push(...bytes.slice(0, 3 - (str[4 * i + 2] === '=') - (str[4 * i + 3] === '=')));
     }
-    return result
+    return new Uint8Array(result)
   }
 
   function initSearch (lunr, data, trieData) {
     const start = performance.now();
-    data = base64ToBytesArr(data);
-    data = window.pako.inflate(data, { to: 'string' });
-    const lunrdata = JSON.parse(data);
-    trieData = base64ToBytesArr(trieData);
-    const trieDataJSON = window.pako.inflate(trieData, { to: 'string' });
-    const index = { index: lunr.Index.load(lunrdata.index), store: lunrdata.store, trie: new LevenshteinTrieUser() };
-    index.trie.load(JSON.parse(trieDataJSON));
+    let loadedIndex = null;
+    let loadingPromise = null;
+
+    const ensureLoaded = async () => {
+      if (loadedIndex) return loadedIndex
+      if (!loadingPromise) {
+        loadingPromise = new Promise((resolve) => {
+          const doLoad = () => {
+            try {
+              const dataBytes = base64ToBytesArr(data);
+              const lunrJSON = window.pako.inflate(dataBytes, { to: 'string' });
+              const lunrdata = JSON.parse(lunrJSON);
+              const trieBytes = base64ToBytesArr(trieData);
+              const trieDataJSON = window.pako.inflate(trieBytes, { to: 'string' });
+              const idx = {
+                index: lunr.Index.load(lunrdata.index),
+                store: lunrdata.store,
+                trie: new LevenshteinTrieUser(),
+              };
+              idx.trie.load(JSON.parse(trieDataJSON));
+              loadedIndex = idx;
+              // announce load completion
+              searchInput.dispatchEvent(new CustomEvent('loadedindex', { detail: { took: performance.now() - start } }));
+              resolve(idx);
+            } catch (e) {
+              console.error('Failed to initialize search index', e);
+              resolve(null);
+            }
+          };
+          if ('requestIdleCallback' in globalThis) {
+            globalThis.requestIdleCallback(doLoad, { timeout: 1000 });
+          } else {
+            setTimeout(doLoad, 0);
+          }
+        });
+      }
+      return loadingPromise
+    };
+
+    // Enable UI immediately; load index on first interaction or idle time
     enableSearchInput(true);
-    searchInput.dispatchEvent(
-      new CustomEvent('loadedindex', {
-        detail: {
-          took: performance.now() - start,
-        },
-      })
-    );
+
+    // Preload on first focus, once
+    const preloadOnce = () => { ensureLoaded().then(() => {}); };
+    searchInput.addEventListener('focus', preloadOnce, { once: true });
+
     searchInput.addEventListener(
       'keydown',
-      debounce(function (e) {
+      debounce(async function (e) {
         if (e.key === 'Escape' || e.key === 'Esc') return clearSearchResults(true)
-        executeSearch(index);
-      }, 100)
+        const idx = await ensureLoaded();
+        if (idx) executeSearch(idx);
+      }, 200)
     );
     searchInput.addEventListener('click', confineEvent);
     searchResultContainer.addEventListener('click', confineEvent);
     if (facetFilterInput) {
       facetFilterInput.parentElement.addEventListener('click', confineEvent);
-      facetFilterInput.addEventListener('change', (e) => toggleFilter(e, index));
+      facetFilterInput.addEventListener('change', async (e) => {
+        const idx = await ensureLoaded();
+        if (idx) toggleFilter(e, idx);
+      });
+      facetFilterInput.addEventListener('focus', preloadOnce, { once: true });
     }
     document.documentElement.addEventListener('click', clearSearchResults);
+  }
+
+  // Modular loading with IndexedDB cache of expanded indexes
+  const DB_NAME = 'antora-search-index';
+  const DB_STORE = 'modules';
+  const DB_VERSION = 1;
+  function openDB () {
+    return new Promise((resolve, reject) => {
+      if (!('indexedDB' in globalThis)) return resolve(null)
+      const req = globalThis.indexedDB.open(DB_NAME, DB_VERSION);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(DB_STORE)) db.createObjectStore(DB_STORE, { keyPath: 'key' });
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => resolve(null);
+    })
+  }
+  async function idbGet (key) {
+    const db = await openDB();
+    if (!db) return null
+    return new Promise((resolve) => {
+      const tx = db.transaction(DB_STORE, 'readonly');
+      const store = tx.objectStore(DB_STORE);
+      const req = store.get(key);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => resolve(null);
+    })
+  }
+  async function idbSet (record) {
+    const db = await openDB();
+    if (!db) return false
+    return new Promise((resolve) => {
+      const tx = db.transaction(DB_STORE, 'readwrite');
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = () => resolve(false);
+      const store = tx.objectStore(DB_STORE);
+      store.put(record);
+    })
+  }
+
+  const loadedModules = [];
+  let siteRootPrefix = '';
+
+  async function loadModuleEntry (lunr, entry) {
+    const cacheKey = entry.id + ':' + entry.hash;
+    const cached = await idbGet(cacheKey);
+    let lunrJSON;
+    let trieJSON;
+    if (cached && cached.lunrJSON && cached.trieJSON) {
+      lunrJSON = cached.lunrJSON;
+      trieJSON = cached.trieJSON;
+    } else {
+      const fetchUrl = entry.url && entry.url.startsWith('/') ? siteRootPrefix + entry.url : entry.url;
+      const res = await fetch(fetchUrl);
+      const json = await res.json();
+      const dataBytes = base64ToBytesArr(json.lunrData);
+      lunrJSON = globalThis.pako.inflate(dataBytes, { to: 'string' });
+      const trieBytes = base64ToBytesArr(json.trieData);
+      trieJSON = globalThis.pako.inflate(trieBytes, { to: 'string' });
+      idbSet({ key: cacheKey, id: entry.id, hash: entry.hash, lunrJSON, trieJSON });
+    }
+    const lunrdata = JSON.parse(lunrJSON);
+    const idx = {
+      index: lunr.Index.load(lunrdata.index),
+      store: lunrdata.store,
+      trie: new LevenshteinTrieUser(),
+    };
+    idx.trie.load(JSON.parse(trieJSON));
+    loadedModules.push({ id: entry.id, info: entry, index: idx.index, store: idx.store, trie: idx.trie });
+    return idx
+  }
+
+  function multiExecuteSearch () {
+    const query = searchInput.value;
+    if (!query) return clearSearchResults()
+    clearSearchResults(false);
+    let any = false;
+    const frag = document.createDocumentFragment();
+    for (const mod of loadedModules) {
+      let result = search(mod.index, mod.store.documents, query);
+      if (result.length === 0 && /\s/.test(query)) {
+        result = search(mod.index, mod.store.documents, query.replace(/\s/g, '_'));
+      }
+      const dataset = document.createElement('div');
+      dataset.classList.add('search-result-dataset');
+      if (result.length > 0) {
+        any = true;
+        createSearchResult(result, mod.store, dataset);
+      }
+      frag.appendChild(dataset);
+    }
+    if (!any) {
+      const dataset = document.createElement('div');
+      dataset.classList.add('search-result-dataset');
+      dataset.appendChild(createNoResult(query));
+      frag.appendChild(dataset);
+    }
+    searchResultContainer.appendChild(frag);
+  }
+
+  async function bootstrap (lunr, manifest, siteRootPath) {
+    const start = performance.now();
+    try {
+      siteRootPrefix = siteRootPath || '';
+      const first = manifest.modules[0];
+      if (!first) return
+      await loadModuleEntry(lunr, first);
+      enableSearchInput(true);
+      searchInput.dispatchEvent(new CustomEvent('loadedindex', { detail: { took: performance.now() - start } }));
+
+      const startBackgroundOnce = (() => {
+        let started = false;
+        const rest = manifest.modules.slice(1);
+        const loadNext = async (i) => {
+          if (i >= rest.length) return
+          try { await loadModuleEntry(lunr, rest[i]); } catch (e) {}
+          setTimeout(() => loadNext(i + 1), 50);
+        };
+        return () => {
+          if (started) return
+          started = true;
+          setTimeout(() => loadNext(0), 0);
+        }
+      })();
+
+      searchInput.addEventListener('keydown', debounce(function (e) {
+        if (e.key === 'Escape' || e.key === 'Esc') return clearSearchResults(true)
+        startBackgroundOnce();
+        multiExecuteSearch();
+      }, 200));
+      searchInput.addEventListener('focus', startBackgroundOnce, { once: true });
+      searchInput.addEventListener('click', confineEvent);
+      searchResultContainer.addEventListener('click', confineEvent);
+      if (facetFilterInput) {
+        facetFilterInput.parentElement.addEventListener('click', confineEvent);
+        facetFilterInput.addEventListener('change', () => multiExecuteSearch());
+        facetFilterInput.addEventListener('focus', startBackgroundOnce, { once: true });
+      }
+      document.documentElement.addEventListener('click', clearSearchResults);
+    } catch (e) {
+      console.error('Failed to bootstrap modular search', e);
+      enableSearchInput(false);
+    }
   }
 
   // disable the search input until the index is loaded
   enableSearchInput(false);
 
+  exports.bootstrap = bootstrap;
   exports.initSearch = initSearch;
 
   Object.defineProperty(exports, '__esModule', { value: true });

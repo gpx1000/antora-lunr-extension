@@ -83,26 +83,22 @@ export function buildHighlightedText (text, positions, snippetLength) {
  * @param term
  * @return {{start: number, length: number}}
  */
-export function findTermPosition (lunr, term, text) {
-  const str = text.toLowerCase()
-  // const len = str.length
-
-  // experiment with avoiding regex
-  const index = str.indexOf(term)
-  const len = str.substr(index).match(/^[^.,\s]*/)[0].length
-
-  if (index === -1) {
-    // Not found
-    return {
-      start: 0,
-      length: 0,
-    }
-  } else {
-    return {
-      start: index,
-      length: len,
-    }
+export function findTermPosition (lunr, term, text, textLower) {
+  // Use provided pre-lowercased text when available to avoid repeated allocations
+  const str = textLower || text.toLowerCase()
+  const t = typeof term === 'string' ? term.toLowerCase() : String(term)
+  const index = str.indexOf(t)
+  if (index === -1) return { start: 0, length: 0 }
+  // Extend to the end of the token (stop at '.', ',' or whitespace) without regex
+  let end = index + t.length
+  const n = str.length
+  while (end < n) {
+    const ch = str.charCodeAt(end)
+    // stop on period (.) 46, comma (,) 44 or any whitespace
+    if (ch === 46 || ch === 44 || ch === 32 || ch === 9 || ch === 10 || ch === 13 || ch === 160) break
+    end++
   }
+  return { start: index, length: end - index }
 }
 
 class TrieNode {
