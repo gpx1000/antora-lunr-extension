@@ -708,23 +708,38 @@
       try {
         const binary = globalThis.atob(str);
         const len = binary.length;
-        const bytes = new Uint8Array(len);
-        for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
-        return bytes
+        const out = new Uint8Array(len);
+        for (let i = 0; i < len; i++) out[i] = binary.charCodeAt(i);
+        return out
       } catch (e) {
-        // fall through to manual decoder on any error
+        // fall back to manual decoder on any error
       }
     }
-    // Fallback manual decoder
-    const abc = [...'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/']; // base64 alphabet
-    const result = [];
-    for (let i = 0; i < str.length / 4; i++) {
-      const chunk = [...str.slice(4 * i, 4 * i + 4)];
-      const bin = chunk.map((x) => abc.indexOf(x).toString(2).padStart(6, 0)).join('');
-      const bytes = bin.match(/.{1,8}/g).map((x) => +('0b' + x));
-      result.push(...bytes.slice(0, 3 - (str[4 * i + 2] === '=') - (str[4 * i + 3] === '=')));
+    // Fallback: manual decoder without large intermediate arrays/strings
+    const lookup = new Uint8Array(256);
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+    for (let i = 0; i < chars.length; i++) lookup[chars.charCodeAt(i)] = i;
+    // Compute output length
+    let padding = 0;
+    if (str.endsWith('==')) padding = 2;
+    else if (str.endsWith('=')) padding = 1;
+    const groups = Math.floor((str.length + 3) / 4);
+    const outLen = groups * 3 - padding;
+    const out = new Uint8Array(outLen);
+    let outIndex = 0;
+    let i = 0;
+    while (i < str.length) {
+      const c1 = str.charCodeAt(i++); const c2 = str.charCodeAt(i++);
+      const c3 = str.charCodeAt(i++); const c4 = str.charCodeAt(i++);
+      const b1 = lookup[c1]; const b2 = lookup[c2];
+      const b3 = c3 === 61 ? 0 : lookup[c3]; // '=' -> 61
+      const b4 = c4 === 61 ? 0 : lookup[c4];
+      const triple = (b1 << 18) | (b2 << 12) | (b3 << 6) | b4;
+      if (outIndex < outLen) out[outIndex++] = (triple >> 16) & 0xff;
+      if (outIndex < outLen) out[outIndex++] = (triple >> 8) & 0xff;
+      if (outIndex < outLen) out[outIndex++] = triple & 0xff;
     }
-    return new Uint8Array(result)
+    return out
   }
 
   function initSearch (lunr, data, trieData) {
@@ -732,17 +747,40 @@
     let loadedIndex = null;
     let loadingPromise = null;
 
+    // Simple fast non-crypto string hash (djb2) to key caches
+    function hashString (s) {
+      let h = 5381;
+      for (let i = 0; i < s.length; i++) h = ((h << 5) + h) ^ s.charCodeAt(i);
+      return (h >>> 0).toString(16)
+    }
+
     const ensureLoaded = async () => {
       if (loadedIndex) return loadedIndex
       if (!loadingPromise) {
         loadingPromise = new Promise((resolve) => {
-          const doLoad = () => {
+          const doLoad = async () => {
             try {
-              const dataBytes = base64ToBytesArr(data);
-              const lunrJSON = window.pako.inflate(dataBytes, { to: 'string' });
+              const cacheKey = 'monolith:' + hashString(String(data)) + ':' + hashString(String(trieData));
+              // Try IndexedDB cache first (uses helper functions defined below)
+              let lunrJSON, trieDataJSON;
+              try {
+                const cached = await (typeof idbGet === 'function' ? idbGet(cacheKey) : null);
+                if (cached && cached.lunrJSON && cached.trieJSON) {
+                  lunrJSON = cached.lunrJSON;
+                  trieDataJSON = cached.trieJSON;
+                }
+              } catch (_) {}
+              if (!lunrJSON || !trieDataJSON) {
+                const dataBytes = base64ToBytesArr(data);
+                lunrJSON = window.pako.inflate(dataBytes, { to: 'string' });
+                const trieBytes = base64ToBytesArr(trieData);
+                trieDataJSON = window.pako.inflate(trieBytes, { to: 'string' });
+                // Store decompressed payloads for next page load
+                try {
+                  if (typeof idbSet === 'function') await idbSet({ key: cacheKey, type: 'monolith', lunrJSON, trieJSON: trieDataJSON });
+                } catch (_) {}
+              }
               const lunrdata = JSON.parse(lunrJSON);
-              const trieBytes = base64ToBytesArr(trieData);
-              const trieDataJSON = window.pako.inflate(trieBytes, { to: 'string' });
               const idx = {
                 index: lunr.Index.load(lunrdata.index),
                 store: lunrdata.store,
@@ -899,7 +937,30 @@
     const start = performance.now();
     try {
       siteRootPrefix = siteRootPath || '';
-      const first = manifest.modules[0];
+      // Allow manifest to be either object or URL string
+      let manifestObj = manifest;
+      if (typeof manifest === 'string') {
+        const url = manifest;
+        // Try IndexedDB cache first
+        try {
+          const cached = await idbGet('manifest:' + url);
+          if (cached && cached.data) manifestObj = cached.data;
+        } catch (e) {}
+        // Fetch latest manifest in background and update cache
+        fetch(url)
+          .then((r) => (r.ok ? r.json() : Promise.reject(new Error('manifest not found'))))
+          .then((fresh) => { idbSet({ key: 'manifest:' + url, data: fresh }); })
+          .catch(() => {});
+        // If no cached manifest yet, block until fetched
+        if (manifestObj == null) {
+          const r = await fetch(url);
+          if (!r.ok) return
+          manifestObj = await r.json();
+          idbSet({ key: 'manifest:' + url, data: manifestObj });
+        }
+      }
+
+      const first = manifestObj.modules[0];
       if (!first) return
       await loadModuleEntry(lunr, first);
       enableSearchInput(true);
@@ -907,7 +968,7 @@
 
       const startBackgroundOnce = (() => {
         let started = false;
-        const rest = manifest.modules.slice(1);
+        const rest = manifestObj.modules.slice(1);
         const loadNext = async (i) => {
           if (i >= rest.length) return
           try { await loadModuleEntry(lunr, rest[i]); } catch (e) {}
