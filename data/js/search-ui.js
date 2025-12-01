@@ -550,6 +550,28 @@
     function normalizeWildcardTerm (term) {
       const s = typeof term === 'string' ? term : String(term);
       const lower = s.toLowerCase();
+      // If the query contains delimiters like '_' or '-', prefer stemming the last segment
+      // so that inputs like 'vk_nv_copy' normalize to 'copi' instead of the whole token.
+      const hasDelim = /[_-]/.test(lower);
+      const runPipeline = (str) => {
+        try {
+          const tokens = index && index.pipeline && typeof index.pipeline.runString === 'function'
+            ? index.pipeline.runString(str)
+            : null;
+          if (tokens && tokens.length) {
+            // Prefer the last token (often the stem) else the longest token
+            let candidate = tokens[tokens.length - 1];
+            if (candidate.length < 3) candidate = tokens.reduce((a, b) => (b.length > a.length ? b : a), candidate);
+            return candidate || str
+          }
+        } catch (_) {}
+        return str
+      };
+      if (hasDelim) {
+        const parts = lower.split(/[_-]+/).filter(Boolean);
+        const last = parts.length ? parts[parts.length - 1] : lower;
+        return runPipeline(last)
+      }
       try {
         const tokens = index && index.pipeline && typeof index.pipeline.runString === 'function'
           ? index.pipeline.runString(lower)
