@@ -590,8 +590,17 @@
       index.query(function (lunrQuery) {
         lunrQuery.clauses = query.clauses.map((clause) => {
           if (clause.presence !== globalThis.lunr.Query.presence.PROHIBITED) {
-            const term = normalizeWildcardTerm(clause.term);
-            clause.term = term + '*';
+            const original = String(clause.term).toLowerCase();
+            const hasDelim = /[_-]/.test(original);
+            if (hasDelim) {
+              // For underscore/hyphen terms, keep the full-token prefix to
+              // match composite tokens like "vk_nv_copy" during incremental typing.
+              clause.term = original + '*';
+            } else {
+              // Otherwise, use the normalized/stemmed prefix.
+              const term = normalizeWildcardTerm(clause.term);
+              clause.term = term + '*';
+            }
             clause.wildcard = globalThis.lunr.Query.wildcard.TRAILING;
             clause.usePipeline = false;
           }
@@ -608,8 +617,11 @@
       index.query(function (lunrQuery) {
         lunrQuery.clauses = query.clauses.map((clause) => {
           if (clause.presence !== globalThis.lunr.Query.presence.PROHIBITED) {
+            const original = String(clause.term).toLowerCase();
+            const hasDelim = /[_-]/.test(original);
             const term = normalizeWildcardTerm(clause.term);
-            clause.term = '*' + term + '*';
+            // For composite tokens, prefer matching the last segment stem as a substring.
+            clause.term = '*' + (hasDelim ? term : term) + '*';
             clause.wildcard = globalThis.lunr.Query.wildcard.LEADING | globalThis.lunr.Query.wildcard.TRAILING;
             clause.usePipeline = false;
           }
