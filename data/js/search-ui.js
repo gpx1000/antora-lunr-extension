@@ -594,7 +594,7 @@
             const hasDelim = /[_-]/.test(original);
             if (hasDelim) {
               // For underscore/hyphen terms, keep the full-token prefix to
-              // match composite tokens like "vk_nv_copy" during incremental typing.
+              // match composite tokens like "vk_nv_copy_memory" during typing.
               clause.term = original + '*';
             } else {
               // Otherwise, use the normalized/stemmed prefix.
@@ -617,11 +617,9 @@
       index.query(function (lunrQuery) {
         lunrQuery.clauses = query.clauses.map((clause) => {
           if (clause.presence !== globalThis.lunr.Query.presence.PROHIBITED) {
-            const original = String(clause.term).toLowerCase();
-            const hasDelim = /[_-]/.test(original);
             const term = normalizeWildcardTerm(clause.term);
             // For composite tokens, prefer matching the last segment stem as a substring.
-            clause.term = '*' + (hasDelim ? term : term) + '*';
+            clause.term = '*' + term + '*';
             clause.wildcard = globalThis.lunr.Query.wildcard.LEADING | globalThis.lunr.Query.wildcard.TRAILING;
             clause.usePipeline = false;
           }
@@ -659,8 +657,12 @@
       return null
     }
     const maxLevenshteinDistance = 3;
-    const trieResults = trie
-      .searchWithLevenshteinWithData(text.toLowerCase(), maxLevenshteinDistance);
+    // For underscore/hyphen queries, skip trie prefilter to avoid over-restrictive
+    // candidate pruning which can cause churn as the user types.
+    const useTrie = !/[_-]/.test(text);
+    const trieResults = useTrie
+      ? trie.searchWithLevenshteinWithData(text.toLowerCase(), maxLevenshteinDistance)
+      : null;
     let result;
     const recheck = /\s/.test(text);
     if (!trieResults) {
@@ -693,8 +695,8 @@
           // Rebuild a temporary index only with the filtered documents
           const tempLunrIndex = globalThis.lunr(function () {
             this.ref('id');
+            this.field('name', { boost: 15 });
             this.field('title', { boost: 10 });
-            this.field('name');
             this.field('text');
             this.field('component');
             this.field('keyword', { boost: 5 });
